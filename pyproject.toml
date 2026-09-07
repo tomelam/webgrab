@@ -3,6 +3,9 @@ name = "webgrab"
 version = "0.1.0"
 description = "Shared web-wrangling layer: fetching, freshness, parsing, and a checked registry of endpoints."
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+readme = "README.md"
 dependencies = [
     "requests>=2.32,<3",
     "tenacity>=8,<10",
