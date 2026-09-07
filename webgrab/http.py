@@ -26,7 +26,7 @@ import requests
 from tenacity import (retry, retry_if_exception_type, stop_after_attempt,
                       wait_exponential, RetryError)
 
-__all__ = ["FetchError", "get", "USER_AGENTS"]
+__all__ = ["FetchError", "get", "post", "request", "USER_AGENTS"]
 
 VERSION = "0.1"
 
@@ -68,8 +68,8 @@ def _headers(ua):
     return {"User-Agent": value}
 
 
-def get(url, *, ua="default", retries=2, backoff=1.0, timeout=TIMEOUT,
-        session=None, allow_empty=False, **kwargs):
+def request(method, url, *, ua="default", retries=2, backoff=1.0, timeout=TIMEOUT,
+            session=None, allow_empty=False, **kwargs):
     """Fetch `url` and return its text, or raise FetchError.
 
     retries=0 means exactly one attempt. Use it for hosts that ban on bursts --
@@ -81,7 +81,7 @@ def get(url, *, ua="default", retries=2, backoff=1.0, timeout=TIMEOUT,
 
     def _once():
         try:
-            r = caller.get(url, headers=headers, timeout=timeout, **kwargs)
+            r = caller.request(method, url, headers=headers, timeout=timeout, **kwargs)
         except requests.RequestException as e:
             raise _Transient(f"{url}: {type(e).__name__}: {e}") from e
         if r.status_code in NO_RETRY_STATUS:
@@ -102,7 +102,8 @@ def get(url, *, ua="default", retries=2, backoff=1.0, timeout=TIMEOUT,
 
     runner = retry(
         stop=stop_after_attempt(retries + 1),
-        wait=wait_exponential(multiplier=backoff, min=backoff, max=30) if backoff else wait_exponential(multiplier=0, max=0),
+        wait=(wait_exponential(multiplier=backoff, min=backoff, max=30) if backoff
+              else wait_exponential(multiplier=0, max=0)),
         retry=retry_if_exception_type(_Transient),
         reraise=False,
     )(_once)
@@ -111,3 +112,18 @@ def get(url, *, ua="default", retries=2, backoff=1.0, timeout=TIMEOUT,
     except RetryError as e:
         last = e.last_attempt.exception()
         raise FetchError(f"{url} failed after {retries + 1} attempts: {last}") from last
+
+
+def get(url, **kwargs):
+    """GET `url`, returning text. See request()."""
+    return request("GET", url, **kwargs)
+
+
+def post(url, data=None, **kwargs):
+    """POST `data` to `url`, returning text.
+
+    Needed for ASP.NET postback pagination, and deliberately routed through the
+    same request() as GET so retry, User-Agent policy and loud failure cannot
+    drift apart between the two verbs.
+    """
+    return request("POST", url, data=data, **kwargs)

@@ -96,3 +96,32 @@ class TestFailureIsLoud:
         responses.add(responses.GET, URL, body="")
         with pytest.raises(http.FetchError, match="empty"):
             http.get(URL)
+
+
+class TestPost:
+    """POST is needed for ASP.NET postback pagination, and must carry the same
+    retry, UA and loud-failure semantics as GET rather than a parallel set."""
+
+    @responses.activate
+    def test_posts_form_data_and_returns_text(self):
+        responses.add(responses.POST, URL, body="page2")
+        assert http.post(URL, data={"hdnPageNo": "2"}) == "page2"
+        assert "hdnPageNo=2" in responses.calls[0].request.body
+
+    @responses.activate
+    def test_shares_the_ua_policy_with_get(self):
+        responses.add(responses.POST, URL, body="ok")
+        http.post(URL, data={}, ua="browser")
+        assert "Mozilla" in responses.calls[0].request.headers["User-Agent"]
+
+    @responses.activate
+    def test_retries_transient_failures_like_get(self):
+        responses.add(responses.POST, URL, status=503)
+        responses.add(responses.POST, URL, body="recovered")
+        assert http.post(URL, data={}, retries=2, backoff=0) == "recovered"
+
+    @responses.activate
+    def test_fails_loudly(self):
+        responses.add(responses.POST, URL, status=500)
+        with pytest.raises(http.FetchError):
+            http.post(URL, data={}, retries=0)

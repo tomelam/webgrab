@@ -23,7 +23,7 @@ FIXTURES:= $(ROOT)/tests/fixtures
 # copy we still have.
 .PRECIOUS: $(FIXTURES)/%
 
-.PHONY: all setup test test-network probe list clean
+.PHONY: all setup test test-network probe list record clean
 
 all: test
 
@@ -45,6 +45,14 @@ probe: setup
 
 list: setup
 	cd $(ROOT) && $(PY) -m webgrab.cli list
+
+# Refresh one recorded fixture from its live site. Fixtures are evidence, so
+# this is the only sanctioned way they change -- never hand-edited.
+#   make record ID=fred OUT=tests/fixtures/fred_DGS10.csv
+record: setup
+	@test -n "$(ID)"  || { echo "usage: make record ID=<source-id> OUT=<path>"; exit 2; }
+	@test -n "$(OUT)" || { echo "usage: make record ID=<source-id> OUT=<path>"; exit 2; }
+	cd $(ROOT) && $(PY) -m webgrab.cli record $(ID) --out $(OUT)
 
 clean:
 	rm -rf $(ROOT)/.pytest_cache $(ROOT)/webgrab/__pycache__ $(ROOT)/tests/__pycache__

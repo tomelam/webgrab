@@ -29,6 +29,34 @@ So the library separates three things that are easy to confuse:
 | Did the world move on? | `webgrab.freshness` |
 | Did the run survive? | make sentinels and `.PRECIOUS` |
 
+## Modules
+
+| Module | For |
+|---|---|
+| `http` | One choke point for GET and POST. Timeout, backoff, per-source User-Agent policy, loud failure. `retries=0` for hosts that ban on bursts. |
+| `freshness` | Cadence checks, day-gating, and stamp-vs-file cross-checks. |
+| `parse` | `csv_last_observation`, `hidden_input_json`, `json_body`, `dig`. All pure. |
+| `session` | Cookie-carrying sessions, and ASP.NET `__doPostBack` pagination. |
+| `browser` | Stealth Chromium for sites a plain fetch cannot reach. `[browser]` extra. |
+| `replay` | Record once, replay forever. |
+| `registry` | `sources.toml` — what works, what is dead, and each site's trick. |
+| `testing` | The pytest plugin that blocks unmocked network calls. |
+
+### Three failure modes these guard against
+
+**A postback that fails does not error — it re-serves the previous page.** Code that
+de-duplicates results by id then finds nothing new and reports success, having read 1 page
+of 17 and lost 94% of the data silently. `session.paginate_aspnet` raises on a
+non-advancing page, and caps the walk regardless of what the page claims its record count is.
+
+**A replay that falls back to the network is worse than no replay.** The suite passes in
+CI while secretly hitting live hosts. A missing fixture raises, and the error says how to
+record it.
+
+**Fetching from inside the page needs the URL JSON-encoded, not interpolated.** A crafted
+URL otherwise closes the JS string literal and runs arbitrary script in the page's origin —
+with the session cookies that in-page fetching exists to make use of.
+
 ## Commands
 
     make test          offline suite; the network is blocked, not merely unused
