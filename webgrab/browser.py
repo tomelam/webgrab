@@ -74,6 +74,11 @@ def fetch_js(url, headers=None, timeout_ms=30000, method="GET", body=None):
     GET-only helper cannot reach, for instance, a TRI history endpoint that takes
     its query as a JSON body.
 
+    Throws inside the page on a non-OK status rather than returning the body. An
+    in-page fetch that ignores `r.ok` hands back the error page as if it were
+    data, and behind an anti-bot challenge that is exactly how a block gets
+    mistaken for content.
+
     URL, headers and body are all JSON-encoded, never interpolated. A naive
     f-string lets crafted content close the string literal and run arbitrary
     script in the page's own origin -- with the session cookies this function
@@ -95,6 +100,8 @@ def fetch_js(url, headers=None, timeout_ms=30000, method="GET", body=None):
                 {body_line}
                 signal: ctl.signal
             }});
+            if (!r.ok) throw new Error(
+                'HTTP ' + r.status + ' for ' + {json.dumps(url)});
             return await r.text();
         }} finally {{ clearTimeout(t); }}
     }}

@@ -150,3 +150,20 @@ class TestInPageFetchJsPost:
     def test_a_dict_body_is_serialised_to_json(self):
         js = browser.fetch_js("https://x.test/a", method="POST", body={"a": 1})
         assert json.dumps(json.dumps({"a": 1})) in js
+
+
+class TestInPageFetchChecksStatus:
+    """An in-page fetch that ignores r.ok returns the error page as if it were
+    data. Behind an anti-bot challenge that is precisely how a block gets
+    mistaken for content -- the whole failure this library exists to prevent,
+    and a real consumer's hand-written JS already guarded against it."""
+
+    def test_the_js_throws_on_a_non_ok_response(self):
+        js = browser.fetch_js("https://x.test/api")
+        assert "r.ok" in js
+        assert "throw" in js
+
+    def test_the_thrown_message_names_the_status_and_url(self):
+        js = browser.fetch_js("https://x.test/api")
+        assert "r.status" in js
+        assert json.dumps("https://x.test/api") in js
