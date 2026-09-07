@@ -77,7 +77,8 @@ def page_count(records, page_size):
 def paginate_aspnet(url, *, page_size, session=None, page_field="hdnPageNo",
                     event_target="btnUpdate", total_override=None,
                     total_pattern=r"([\d,]+)\s+Records", max_pages=DEFAULT_MAX_PAGES,
-                    throttle=0.25, ua="default", retries=2, _sleep=time.sleep):
+                    throttle=0.25, ua="default", retries=2, first_page=None,
+                    _sleep=time.sleep):
     """Yield the HTML of every page of an ASP.NET postback-paginated result set.
 
     Yields page 1 from a GET, then each subsequent page from a POST that echoes
@@ -87,9 +88,15 @@ def paginate_aspnet(url, *, page_size, session=None, page_field="hdnPageNo",
 
     `total_override` skips reading the count off the page, for callers that know
     it. `max_pages` is a hard bound regardless of what the page claims.
+    `first_page` supplies page 1 instead of fetching it.
     """
     sess = session or new_session()
-    first = http.get(url, session=sess, ua=ua, retries=retries)
+    # `first_page` lets a caller supply page 1 it already holds -- fetched through
+    # its own seam, or read from a recorded fixture. Without it, a consumer with a
+    # replay mode cannot paginate offline at all, and one with its own fetch
+    # wrapper has that wrapper bypassed.
+    first = first_page if first_page is not None else http.get(
+        url, session=sess, ua=ua, retries=retries)
     yield first
 
     records = total_records(first, total_pattern) if total_override is None else total_override

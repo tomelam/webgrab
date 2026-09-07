@@ -141,3 +141,44 @@ class TestPaginateAspnet:
         responses.add(responses.POST, URL, body=_page(2, "vs2"))
         list(session.paginate_aspnet(URL, page_size=14, total_override=28, throttle=0))
         assert "ASP.NET_SessionId=abc123" in responses.calls[1].request.headers.get("Cookie", "")
+
+
+class TestFirstPageSupplied:
+    """A caller often already holds page 1 -- fetched through its own seam, or
+    read from a recorded fixture. Forcing paginate_aspnet to re-fetch it would
+    break that seam and make offline replay impossible."""
+
+    @responses.activate
+    def test_a_supplied_first_page_is_used_and_not_refetched(self):
+        responses.add(responses.POST, URL, body=_page(2, "vs2"))
+        pages = list(session.paginate_aspnet(
+            URL, page_size=14, total_override=28, throttle=0,
+            first_page=_page(1, "vs1")))
+        assert len(pages) == 2
+        assert "page-body-1" in pages[0]
+        assert all(c.request.method == "POST" for c in responses.calls), \
+            "no GET should be issued when page 1 is supplied"
+
+    @responses.activate
+    def test_the_supplied_page_still_provides_the_viewstate(self):
+        responses.add(responses.POST, URL, body=_page(2, "vs2"))
+        list(session.paginate_aspnet(URL, page_size=14, total_override=28,
+                                     throttle=0, first_page=_page(1, "vs-from-caller")))
+        assert "__VIEWSTATE=vs-from-caller" in responses.calls[0].request.body
+
+    @responses.activate
+    def test_the_record_count_is_read_from_the_supplied_page(self):
+        """231 Records at 14 per page is 17 pages, capped here at 3."""
+        for n in range(2, 5):
+            responses.add(responses.POST, URL, body=_page(n, f"vs{n}"))
+        pages = list(session.paginate_aspnet(
+            URL, page_size=14, throttle=0, max_pages=3, first_page=_page(1, "vs1")))
+        assert len(pages) == 3
+
+    def test_a_single_page_supplied_needs_no_network_at_all(self):
+        """No responses.activate and no mock: the autouse guard fails this test
+        if it touches the network. This is what makes offline replay work."""
+        pages = list(session.paginate_aspnet(
+            URL, page_size=14, total_override=5, throttle=0,
+            first_page=_page(1, "vs1")))
+        assert len(pages) == 1
