@@ -120,3 +120,33 @@ class TestPacing:
     def test_jitter_rejects_an_inverted_range(self):
         with pytest.raises(ValueError):
             browser.jitter(5.0, 1.0)
+
+
+class TestInPageFetchJsPost:
+    """niftyindices' TRI endpoint is an in-page POST with a JSON body, so a
+    GET-only helper cannot serve it. Found while migrating a real consumer."""
+
+    def test_method_defaults_to_get_with_no_body(self):
+        js = browser.fetch_js("https://x.test/a")
+        assert "method" not in js or '"GET"' in js
+        assert "body" not in js
+
+    def test_post_carries_the_method_and_body(self):
+        js = browser.fetch_js("https://x.test/api", method="POST",
+                              body='{"index":"NIFTY 50"}',
+                              headers={"Content-Type": "application/json"})
+        assert '"POST"' in js
+        assert json.dumps('{"index":"NIFTY 50"}') in js, "body must be JSON-encoded"
+        assert json.dumps({"Content-Type": "application/json"}) in js
+
+    def test_a_body_containing_a_quote_cannot_break_out_of_the_js(self):
+        """Same injection guard as the URL. The body is attacker-shaped data far
+        more often than the URL is -- it frequently contains user input."""
+        nasty = '{"q": "a\\"); alert(\\"pwned\\"); //"}'
+        js = browser.fetch_js("https://x.test/a", method="POST", body=nasty)
+        assert json.dumps(nasty) in js
+        assert 'alert(\\"pwned\\")' not in js.replace(json.dumps(nasty), "")
+
+    def test_a_dict_body_is_serialised_to_json(self):
+        js = browser.fetch_js("https://x.test/a", method="POST", body={"a": 1})
+        assert json.dumps(json.dumps({"a": 1})) in js

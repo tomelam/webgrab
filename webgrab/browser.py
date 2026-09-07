@@ -67,22 +67,32 @@ def jitter(low, high):
     return random.uniform(low, high)
 
 
-def fetch_js(url, headers=None, timeout_ms=30000):
+def fetch_js(url, headers=None, timeout_ms=30000, method="GET", body=None):
     """JavaScript that fetches `url` from inside the page and returns its text.
 
-    The URL and headers are JSON-encoded, never interpolated. A naive f-string
-    here lets a crafted URL close the string literal and run arbitrary script in
-    the page's own origin -- with the session cookies this function exists to
-    make use of.
+    Supports an in-page POST with a body, which some endpoints require: a
+    GET-only helper cannot reach, for instance, a TRI history endpoint that takes
+    its query as a JSON body.
+
+    URL, headers and body are all JSON-encoded, never interpolated. A naive
+    f-string lets crafted content close the string literal and run arbitrary
+    script in the page's own origin -- with the session cookies this function
+    exists to make use of. The body matters most here: it carries user-shaped
+    input far more often than the URL does. A dict body is serialised to JSON.
     """
+    if body is not None and not isinstance(body, str):
+        body = json.dumps(body)
+    body_line = f"body: {json.dumps(body)}," if body is not None else ""
     return f"""
     async () => {{
         const ctl = new AbortController();
         const t = setTimeout(() => ctl.abort(), {int(timeout_ms)});
         try {{
             const r = await fetch({json.dumps(url)}, {{
+                method: {json.dumps(method)},
                 credentials: 'same-origin',
                 headers: {json.dumps(headers or {})},
+                {body_line}
                 signal: ctl.signal
             }});
             return await r.text();
