@@ -1,0 +1,198 @@
+# webgrab source registry -- how to talk to each site, and what is known to go wrong.
+#
+# MECHANICS ONLY. This file must never record which instruments the household
+# holds. Instrument identifiers belong in the consuming project's own private
+# config, which is not part of this repository.
+#
+# One uniform shape per source, so `make probe` can walk them all:
+#   status        works | dead | blocked | licensed | needs-login | needs-browser | unconfirmed
+#   user_agent    default (honest webgrab/x) | browser | none
+#   max_age_days  how stale the newest observation may be before it is an error
+#   retries       0 for hosts that ban on bursts -- there the retry is the next run
+#   probe         params filling the url template, for re-verification
+#
+# `last_verified` is a claim that someone looked. `make probe` is what makes it true.
+
+[sources.fred]
+url           = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}"
+status        = "works"
+format        = "csv"
+cadence       = "business_day"
+max_age_days  = 10
+user_agent    = "default"
+retries       = 2
+last_verified = 2026-09-07
+probe         = { series = "DGS10" }
+newest_date   = { kind = "csv_last_observation" }
+notes = """
+BEHIND AKAMAI BOT MANAGER (it sets _abck / bm_sz cookies). It judges the
+User-Agent STRING, and an unrecognised token is blocked. Measured 2026-09-07,
+each result repeated with controls:
+    no UA override / 'python-requests/x' / 'python-urllib/x' / 'curl/8.7.1'  OK, ~0.2s
+    'webgrab/0.1'                                        FAIL, 10s read timeout
+    'webgrab/0.1 python-requests/2.34.2'                 FAIL  (a custom token
+                                                               poisons it even
+                                                               appended to a good one)
+    any browser/Chrome UA, on any transport              FAIL, 15-20s
+Hence user_agent = "default", which means SEND NO OVERRIDE and let the HTTP
+library name itself. A bespoke, polite-looking UA is the one thing that breaks it.
+Holiday rows carry '.' instead of a number; read the newest NUMERIC row.
+Header is 'observation_date,<SERIES>' (not 'DATE') as of 2026-09-07.
+"""
+
+[sources.fred_swap_30y]
+url           = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DSWP30"
+status        = "dead"
+format        = "csv"
+newest_observation = 2016-10-28
+last_verified = 2026-09-07
+notes = """
+Returns a clean HTTP 200 with valid, parseable CSV whose newest observation is
+2016-10-28. Verified 2026-09-07. Kept as the library's permanent test case: this
+is what a dead endpoint looks like to any check that reads only the status code.
+With CME/LBMA swap data licensed, there is NO sanctioned path to a current swap
+spread -- report it as unavailable, never as unverified.
+"""
+
+[sources.fred_swap_10y]
+url           = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DSWP10"
+status        = "dead"
+format        = "csv"
+newest_observation = 2016-10-28
+last_verified = 2026-09-07
+notes = "As fred_swap_30y. Newest observation 2016-10-28, verified 2026-09-07."
+
+[sources.gold_api]
+url           = "https://api.gold-api.com/price/{symbol}"
+status        = "works"
+format        = "json"
+cadence       = "continuous"
+max_age_days  = 3
+user_agent    = "default"
+retries       = 2
+last_verified = 2026-09-07
+probe         = { symbol = "XAU" }
+newest_date   = { kind = "json", path = "updatedAt" }
+notes = "USD per troy ounce; symbols XAU / XAG. Reject a non-positive or non-numeric price rather than defaulting."
+
+[sources.ibjarates]
+url           = "https://ibjarates.com/"
+status        = "works"
+format        = "html-hidden-input-json"
+cadence       = "business_day"
+max_age_days  = 5
+user_agent    = "default"
+retries       = 2
+last_verified = 2026-09-07
+probe         = {}
+newest_date   = { kind = "hidden_input", input = "HdnGold", path = "labels.-1" }
+notes = """
+Read the hidden inputs HdnGold / HdnSilver, which carry ~4 months of dated rates
+as JSON, rather than the display spans -- the JSON also yields the publication
+date, which the display does not. Gold is quoted per 10 g, silver per kg.
+Business days only, so a weekend run carries the previous business day and must
+say which. Verified 2026-09-07: 85 observations, newest 04/09/2026,
+purity916/purity999 = 0.91600 exactly.
+"""
+
+[sources.mfapi]
+url           = "https://api.mfapi.in/mf/{scheme_code}"
+status        = "works"
+format        = "json"
+cadence       = "business_day"
+max_age_days  = 6
+user_agent    = "default"
+retries       = 2
+last_verified = 2026-09-07
+probe         = { scheme_code = "122639" }
+newest_date   = { kind = "json", path = "data.0.date" }
+notes = """
+data[0] is the newest NAV; dates are DD-MM-YYYY.
+A stale newest-NAV means a DEAD FUND, not a fetch failure: scheme 100027
+(Grindlays Super Saver) last published 29-05-2008, verified 2026-09-07.
+The probe code 122639 is an arbitrary public fund, used only to verify the
+endpoint still answers. Identifiers of actual holdings belong in the consuming
+project's own private config, never here.
+"""
+
+[sources.archive_org]
+url           = "https://archive.org/metadata/{item_id}"
+status        = "works"
+format        = "json"
+cadence       = "static"
+user_agent    = "default"
+retries       = 2
+last_verified = 2026-09-07
+probe         = { item_id = "ec-08-1904-b" }
+newest_date   = { kind = "none" }   # static archive item: it cannot go stale
+notes = """
+NEVER construct a filename from the item id. Verified 2026-09-07: item
+'ec-08-1904-b' holds files named 'EC_08_1904_B.pdf' -- different case AND
+different separators. Read /metadata/ and use the names it gives.
+A non-existent item returns HTTP 200 with a literal empty object {}, not a 404,
+so a status check cannot detect a bad id; require a non-empty body.
+Follow redirects on downloads or you silently get a 0-byte file.
+"""
+
+[sources.sanskritdocuments]
+url           = "https://sanskritdocuments.org/"
+status        = "unconfirmed"
+last_verified = 2026-09-07
+notes = """
+A local reference note (outside this repo) recorded that this host returns
+HTTP 406 without a browser User-Agent. THAT DID NOT REPRODUCE on 2026-09-07: the
+root and a directory path each returned 200 both with and without a UA. Either
+the site changed or the rule was always path-specific. Recorded as unconfirmed
+rather than copied forward -- do not act on the 406 claim until it reproduces.
+"""
+
+[sources.niftyindices]
+url           = "https://niftyindices.com/reports/historical-data"
+status        = "needs-browser"
+retries       = 0
+day_gated     = true
+notes = """
+ASP.NET session plus an ARR-affinity cookie wall; IP bans on bursts. retries=0 and
+day_gated on purpose: bursts are what trip the block, so the retry is the next
+scheduled run. Reference implementation:
+PortfolioAnalyzer/portfolioanalyzer/loaders/data_update.py.
+"""
+
+[sources.rbi_sgb]
+url           = "https://rbi.org.in/Scripts/SearchResults.aspx"
+status        = "works"
+format        = "html-aspnet-postback"
+user_agent    = "default"
+retries       = 2
+notes = """
+Paginate via __doPostBack('btnUpdate','') plus hdnPageNo on a persistent session;
+read the total-records field to know when to stop. Throttle between pages.
+m.rbi.org.in/Scripts/BS_SwarnaBharat.aspx is CAPTCHA-walled -- use the
+press-release path instead. Reference: PortfolioAnalyzer loaders/sgb_redemptions.py.
+"""
+
+[sources.vro]
+url           = "https://www.valueresearchonline.com/"
+status        = "needs-browser"
+retries       = 0
+notes = "Behind Cloudflare. Clear the challenge once per session and amortize it across endpoints; fetch from inside the page so cookies ride along. Reference: PortfolioAnalyzer loaders/vro.py."
+
+[sources.stooq]
+url    = "https://stooq.com/"
+status = "blocked"
+notes  = "Blocked for this use. Do not re-attempt without a reason to think it changed."
+
+[sources.goldprice]
+url    = "https://goldprice.org/"
+status = "blocked"
+notes  = "Blocked for this use."
+
+[sources.lbma_swaps]
+url    = "https://www.lbma.org.uk/"
+status = "licensed"
+notes  = "Swap data is licensed, not public. Combined with FRED's DSWP series being dead, there is no sanctioned current swap spread."
+
+[sources.cme_swaps]
+url    = "https://www.cmegroup.com/"
+status = "licensed"
+notes  = "Licensed. See lbma_swaps."
