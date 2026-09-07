@@ -125,3 +125,46 @@ class TestPost:
         responses.add(responses.POST, URL, status=500)
         with pytest.raises(http.FetchError):
             http.post(URL, data={}, retries=0)
+
+
+class TestSessionCompatibility:
+    """A session need only quack like `requests`: `.get()` / `.post()`.
+
+    Real code injects `requests.Session`, but test doubles across projects
+    implement just the verb methods. Calling `session.request(method, ...)`
+    would reject every such double, and the library would be the awkward one.
+    """
+
+    @responses.activate
+    def test_a_duck_typed_session_with_only_get_is_accepted(self):
+        calls = []
+
+        class OnlyGet:
+            def get(self, url, **kwargs):
+                calls.append((url, kwargs))
+                class R:
+                    status_code = 200
+                    text = "canned"
+                return R()
+
+        assert http.get(URL, session=OnlyGet()) == "canned"
+        assert calls[0][0] == URL
+        assert "timeout" in calls[0][1] and "headers" in calls[0][1]
+
+    @responses.activate
+    def test_a_duck_typed_session_with_only_post_is_accepted(self):
+        class OnlyPost:
+            def post(self, url, **kwargs):
+                class R:
+                    status_code = 200
+                    text = "posted"
+                return R()
+
+        assert http.post(URL, data={"a": "1"}, session=OnlyPost()) == "posted"
+
+    @responses.activate
+    def test_a_real_requests_session_still_works(self):
+        import requests as _rq
+        responses.add(responses.GET, URL, body="ok")
+        with _rq.Session() as s:
+            assert http.get(URL, session=s) == "ok"

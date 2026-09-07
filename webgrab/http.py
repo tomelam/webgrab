@@ -79,9 +79,18 @@ def request(method, url, *, ua="default", retries=2, backoff=1.0, timeout=TIMEOU
     headers = _headers(ua)
     headers.update(kwargs.pop("headers", None) or {})
 
+    # Dispatch to the verb method (.get / .post) rather than .request(). Real
+    # code injects a requests.Session, which has both -- but test doubles across
+    # projects implement only the verb methods, and rejecting those would make
+    # this library the awkward one to mock.
+    verb = getattr(caller, method.lower(), None)
+    if verb is None:
+        raise FetchError(
+            f"session {type(caller).__name__} has no .{method.lower()}() method")
+
     def _once():
         try:
-            r = caller.request(method, url, headers=headers, timeout=timeout, **kwargs)
+            r = verb(url, headers=headers, timeout=timeout, **kwargs)
         except requests.RequestException as e:
             raise _Transient(f"{url}: {type(e).__name__}: {e}") from e
         if r.status_code in NO_RETRY_STATUS:
