@@ -148,14 +148,25 @@ rather than copied forward -- do not act on the 406 claim until it reproduces.
 
 [sources.niftyindices]
 url           = "https://niftyindices.com/reports/historical-data"
-status        = "needs-browser"
+status        = "needs-login"
 retries       = 0
 day_gated     = true
+last_verified = 2026-09-07
 notes = """
-ASP.NET session plus an ARR-affinity cookie wall; IP bans on bursts. retries=0 and
-day_gated on purpose: bursts are what trip the block, so the retry is the next
-scheduled run. Reference implementation:
-PortfolioAnalyzer/portfolioanalyzer/loaders/data_update.py.
+THE TRI ENDPOINT MOVED BEHIND AUTHENTICATION. Diagnosed 2026-09-07 from a single
+captured session:
+    POST /Backpage.aspx/getTotalReturnIndexString
+    GET  /Sitefinity/Login?ReturnUrl=...getTotalReturnIndexString
+    GET  /?ReturnUrl=...
+The caller receives HTTP 200 carrying ~93 KB of the site's homepage, titled
+"NIFTY Indices". The historical-data page no longer references the endpoint at
+all. This is NOT an IP block -- the landing page loaded normally in the same
+session, titled "Historical Data" at the right URL -- and not a scraper bug.
+An HTML body from a JSON endpoint is a different ANSWER, not malformed JSON;
+reporting it as a parse error reads like a transient glitch worth retrying, and
+retrying cannot get past a login wall.
+The page itself still needs a stealth browser and still bans on bursts, hence
+retries=0 and day_gated: the retry is the next scheduled run, not now.
 """
 
 [sources.rbi_sgb]
