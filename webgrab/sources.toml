@@ -147,26 +147,41 @@ rather than copied forward -- do not act on the 406 claim until it reproduces.
 """
 
 [sources.niftyindices]
-url           = "https://niftyindices.com/reports/historical-data"
-status        = "needs-login"
+url           = "https://www.niftyindices.com/BackPage/getTotalReturnIndexString"
+status        = "needs-browser"
+format        = "json"
+cadence       = "business_day"
+max_age_days  = 5
 retries       = 0
 day_gated     = true
 last_verified = 2026-09-07
 notes = """
-THE TRI ENDPOINT MOVED BEHIND AUTHENTICATION. Diagnosed 2026-09-07 from a single
-captured session:
-    POST /Backpage.aspx/getTotalReturnIndexString
-    GET  /Sitefinity/Login?ReturnUrl=...getTotalReturnIndexString
-    GET  /?ReturnUrl=...
-The caller receives HTTP 200 carrying ~93 KB of the site's homepage, titled
-"NIFTY Indices". The historical-data page no longer references the endpoint at
-all. This is NOT an IP block -- the landing page loaded normally in the same
-session, titled "Historical Data" at the right URL -- and not a scraper bug.
-An HTML body from a JSON endpoint is a different ANSWER, not malformed JSON;
-reporting it as a parse error reads like a transient glitch worth retrying, and
-retrying cannot get past a login wall.
-The page itself still needs a stealth browser and still bans on bursts, hence
-retries=0 and day_gated: the retry is the next scheduled run, not now.
+ROUTE CHANGED IN 2026, and the old symptom pointed the wrong way. Diagnosed
+2026-09-07 by driving the page's own form under a browser and reading the request
+off the wire, then confirming against the call site in the site's own
+liveindexsa.niftyindices.com/assets/js/IISLComponet.js.
+
+    OLD  POST /Backpage.aspx/getTotalReturnIndexString  ->  {"d": "<json string>"}
+    NEW  POST /BackPage/getTotalReturnIndexString       ->  bare JSON array
+
+The method NAME and the request body never changed. `cinfo` is still a
+single-quoted JSON string:
+    {"cinfo": "{'name':'NIFTY 50','startDate':'01-Apr-2026','endDate':'30-Apr-2026','indexName':'NIFTY 50'}"}
+Only the route and the response envelope moved.
+
+The old route now redirects to /Sitefinity/Login and lands on the homepage, so a
+caller receives HTTP 200 with ~93 KB of HTML. /Sitefinity/Login is the CMS EDITOR
+login -- what a Sitefinity site serves for a route that no longer exists, not a
+visitor paywall. The data was never gated. Reading that redirect as "needs an
+account" would have sent someone looking for credentials that do not exist.
+
+LESSON: an HTML body from a JSON endpoint is a different ANSWER, not malformed
+JSON. Surfacing it as a parse error makes it look transient and retryable, which
+points the investigation at the parser instead of the URL.
+
+Still needs a stealth browser (ASP.NET session plus a server-affinity cookie
+wall) and still bans on bursts, hence retries=0 and day_gated: the retry is the
+next scheduled run, not now.
 """
 
 [sources.rbi_sgb]
