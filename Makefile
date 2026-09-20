@@ -12,7 +12,11 @@ SHELL   := /bin/bash
 ROOT    := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 VENV    := $(ROOT)/.venv
 PY      := $(VENV)/bin/python
-PIP     := $(VENV)/bin/uv pip
+# The venv's OWN pip. `$(VENV)/bin/uv pip` stood here until 2026-09-20 and named a
+# binary that has never existed in this venv -- `make setup` would have failed at the
+# install step, invisibly, because .venv/bin/python already existed and the rule that
+# builds it never fired.
+PIP     := $(PY) -m pip
 FIXTURES:= $(ROOT)/tests/fixtures
 
 # A failed single-shot fetch must not leave a truncated file that looks NEWER
@@ -27,9 +31,16 @@ FIXTURES:= $(ROOT)/tests/fixtures
 
 all: test
 
-$(VENV)/bin/python:
-	uv venv --python 3.12 $(VENV)
-	cd $(ROOT) && $(PIP) install -e '.[dev]'
+# Built on the interpreter .tool-versions pins (asdf 3.12.9), named by path so the
+# venv and the pin cannot drift. `uv venv --python 3.12` stood here and resolved to
+# Homebrew's 3.12 instead.
+ASDF_PY := $(HOME)/.asdf/installs/python/$(shell cut -d' ' -f2 $(ROOT)/.tool-versions)/bin/python3
+
+$(VENV)/bin/python: $(ROOT)/.tool-versions
+	@test -x "$(ASDF_PY)" || { echo "missing $(ASDF_PY) -- asdf install python $$(cut -d' ' -f2 $(ROOT)/.tool-versions)"; exit 1; }
+	"$(ASDF_PY)" -m venv $(VENV)
+	$(PY) -m pip install --quiet --upgrade pip
+	cd $(ROOT) && $(PIP) install -e '.[dev,browser]'
 
 setup: $(VENV)/bin/python
 	@echo "env ready: $$($(PY) -V)"
